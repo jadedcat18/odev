@@ -1,0 +1,814 @@
+import 'dart:ffi';
+import 'dart:typed_data';
+
+import 'package:flutter/cupertino.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
+import 'dart:io';  // Dosya işlemleri için
+import 'package:flutter/material.dart';
+import 'package:path/path.dart';
+import 'package:image_picker/image_picker.dart';
+
+void main()
+{
+  runApp(MyApp());
+}
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(home: Login());
+  }
+}
+class Login extends StatefulWidget {
+  const Login({super.key});
+
+  @override
+  State<Login> createState() => _LoginState();
+}
+
+class _LoginState extends State<Login> {
+  TextEditingController usernameController = TextEditingController();
+  TextEditingController passwordController = TextEditingController();
+
+  Future<void> controlBilgiler(BuildContext context)
+  async {
+    final db = await DBHelper.instance.database;
+  var result = db.query('userTable',where: 'username = ?',whereArgs: [usernameController.text]);
+  final password = await db.query('userTable',columns: ['password'],where: 'username = ?',whereArgs: [usernameController.text]);
+  String sifre = password.first['password'] as String;
+  if(result == null)
+    {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Sistemde kayıtlı bir kullanıcı yok.")],)));
+    }
+  else
+    {
+      if(sifre == passwordController.text)
+        {
+          username = usernameController.text;
+          Navigator.push(context, MaterialPageRoute(builder: (context) => Welcome()));
+        }
+      else
+        {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Şifre Yanlış!")],)));
+        }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(appBar: AppBar(backgroundColor: Colors.lightBlue,title: Text("Giris Yap"),centerTitle: true),
+      body: Column(crossAxisAlignment: CrossAxisAlignment.center,children: [
+        Center(child: Text("Kullanıcı Adı",style: TextStyle(fontSize: 60),)),
+        TextField(controller: usernameController,),
+        Text("Şifre",style: TextStyle(fontSize: 60),),
+        TextField(controller: passwordController,),
+        SizedBox(height: 50,),
+        SizedBox(width: 200,height: 100,
+            child: ElevatedButton(
+            style: ButtonStyle(
+                backgroundColor: MaterialStateProperty.all<Color>(Colors.blue)),
+            onPressed: () => {controlBilgiler(context)},
+            child: Text("Giriş Yap",style: TextStyle(fontSize: 30,color: Colors.white),))),
+        SizedBox(height: 50,),
+        SizedBox(width: 200,height: 100,
+            child: ElevatedButton(
+                style: ButtonStyle(
+                    backgroundColor: MaterialStateProperty.all<Color>(Colors.blue)),
+                onPressed: () => {Navigator.push(context, MaterialPageRoute(builder: (context) => Register()))},
+                child: Text("Kayıt Ol",style: TextStyle(fontSize: 30,color: Colors.white),)))
+      ],),);
+  }
+}
+class Register extends StatefulWidget {
+  const Register({super.key});
+
+  @override
+  State<Register> createState() => _RegisterState();
+}
+
+class _RegisterState extends State<Register> {
+  TextEditingController usernameController = TextEditingController();
+  TextEditingController passwordController = TextEditingController();
+  TextEditingController passwordControllerAgain = TextEditingController();
+  TextEditingController sirketController = TextEditingController();
+  XFile? PP;
+  Uint8List? _imageBytes;
+
+  Future<void> controlBilgiler(BuildContext context)
+  async {
+    if(usernameController.text == "")
+    {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Kullanıcı adı boş bırakılamaz!")],)));
+      return;
+    }
+    final db = await DBHelper.instance.database;
+     var result = await db.query('userTable',where: 'username = ?',whereArgs: [usernameController.text]);
+
+    if(!result.isEmpty)
+    {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Aynı isimde baska bir kullanıcı mevcut!")],)));
+      usernameController.clear();
+      return;
+    }
+    if(passwordController.text == "")
+    {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Şifre boş bırakılamaz!")],)));
+      return;
+    }
+    if(passwordController.text != passwordControllerAgain.text)
+    {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Şifreler uyuşmuyor!")],)));
+      return;
+    }
+    if(sirketController.text == "")
+    {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Şirket adı boş bırakılamaz!")],)));
+      return;
+    }
+    if(PP == null)
+    {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Bir profil fotoğrafı yüklemelisin!")],)));
+      return;
+    }
+    final Uint8List imageBytes = await PP!.readAsBytes();
+
+    DBHelper.instance.insertUser(usernameController.text, passwordController.text,imageBytes,sirketController.text);
+      Navigator.pop(context);
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Kayıt Başarılı!")],)));
+    return;
+  }
+
+  Future<void> PickImage() async{
+    final ImagePicker picker = ImagePicker();
+    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+
+    setState(() {
+      if(image != null)
+        {
+          PP=image;
+        }
+    });
+
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(appBar: AppBar(backgroundColor: Colors.lightBlue,title: Text("Kayıt Ol"),centerTitle: true),
+      body: Column(crossAxisAlignment: CrossAxisAlignment.center,children: [
+        Center(child: Text("Kullanıcı Adı",style: TextStyle(fontSize: 20),)),
+        TextField(controller: usernameController,),
+        Text("Şifre",style: TextStyle(fontSize: 20),),
+        TextField(controller: passwordController,),
+        Text("Şifre Tekrar",style: TextStyle(fontSize: 20),),
+        TextField(controller: passwordControllerAgain,),
+        Text("Şirket İsmi",style: TextStyle(fontSize: 20),),
+        TextField(controller: sirketController,),
+        ElevatedButton(onPressed: () => {PickImage()}, child: PP != null ? Image.file(File(PP!.path),width: 100,height: 100,fit: BoxFit.cover,):Text("Galeriden Fotoğraf Seç")),
+
+        SizedBox(height: 20,),
+        SizedBox(width: 100,height: 50,
+            child: ElevatedButton(
+                style: ButtonStyle(
+                    backgroundColor: MaterialStateProperty.all<Color>(Colors.amber)),
+                onPressed: () => {controlBilgiler(context)},
+                child: Text("Kayıt Ol",style: TextStyle(fontSize: 20,color: Colors.white),))),
+        SizedBox(height: 20,),
+
+      ],),);;
+  }
+}
+class Welcome extends StatefulWidget {
+  const Welcome({super.key});
+
+  @override
+  State<Welcome> createState() => _WelcomeState();
+}
+
+String? username;
+
+class _WelcomeState extends State<Welcome> {
+  File? imageFile;
+  String? sirketAdi;
+
+  @override
+  void initState() {
+    super.initState();
+    loadImage();
+  }
+
+  Future<void> loadImage() async {
+    try {
+      final db = await DBHelper.instance.database;
+      final result = await db.query(
+        'userTable',
+        columns: ['image'],
+        where: 'username = ?',
+        whereArgs: [username],
+      );
+      final sirket = await db.query(
+        'userTable',
+        columns: ['sirketAdi'],
+        where: 'username = ?',
+        whereArgs: [username],
+      );
+      if(sirket.isNotEmpty)
+        {
+          sirketAdi = sirket.first['sirketAdi'] as String;
+        }
+
+      if (result.isNotEmpty) {
+        final Uint8List imageData = result.first['image'] as Uint8List;
+        final directory = await getTemporaryDirectory();
+        final filePath = '${directory.path}/$username${DateTime.now().millisecondsSinceEpoch}.png';
+        final file = File(filePath);
+        await file.writeAsBytes(imageData);
+
+        setState(() {
+          imageFile = file;
+        });
+      }
+    } catch (e) {
+      print("Resim yüklenirken hata oluştu: $e");
+    }
+  }
+bool isZoomed = false;
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(drawer: Drawer(child: ListView(children: [
+      DrawerHeader(decoration: BoxDecoration(color: Colors.amber),child: Text("Menü"))
+    ,ListTile(title: Text("Gelir-Gider Girişi"),
+        onTap: () => {Navigator.push(context, MaterialPageRoute(builder: (context) => IncomeRegister()))},),
+      ListTile(title: Text("Gelir-Gider Hesaplama"),
+        onTap: () => {Navigator.push(context, MaterialPageRoute(builder: (context) => IncomeCalculator()))},),
+      ListTile(title: Text("Ayarlar"),
+        onTap: () => {Navigator.push(context, MaterialPageRoute(builder: (context) => Settings()))},)
+    ],),),
+      appBar: AppBar(
+        title: Text("Hoş Geldiniz"),
+        backgroundColor: Colors.amber,
+      ),
+      body: Stack(
+        children: [
+
+          Positioned(
+            top: 120,
+            left: 0,
+            child: SizedBox(width: MediaQuery.of(context).size.width,height: MediaQuery.of(context).size.height,
+              child: Column(mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  Text(
+                    "Şirket adı:",
+                    style: TextStyle(fontSize: 30),
+                  ),
+                  Text(
+                    sirketAdi ?? "Şirket adı yükleniyor...",
+                    style: TextStyle(fontSize: 30),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedPositioned(
+                duration: Duration(milliseconds: 300), // Animasyon süresi
+            curve: Curves.easeInOut, // Animasyon eğrisi
+            top: isZoomed ? MediaQuery.of(context).size.height * 0.2 : 10,
+            left: isZoomed ? MediaQuery.of(context).size.width * 0.1 : MediaQuery.of(context).size.width /2 - 50,
+            width: isZoomed
+            ? MediaQuery.of(context).size.width * 0.8
+                : 100, // Büyüklük
+            height: isZoomed
+            ? MediaQuery.of(context).size.height * 0.5
+                : 100, // Yükseklik
+            child: GestureDetector(onTap: () {setState(() {
+              loadImage();
+              isZoomed = !isZoomed;
+            });},
+              child: Container(
+              decoration: BoxDecoration(
+              color: Colors.blue,
+              borderRadius: BorderRadius.circular(15),
+              ),
+                  child: imageFile != null
+                      ? Image.file(imageFile!)
+                      : Center(child: CircularProgressIndicator()),
+              ),
+            ),
+            )
+
+
+        ],
+      ),
+    );
+  }
+}
+class IncomeRegister extends StatefulWidget {
+  const IncomeRegister({super.key});
+  @override
+  State<IncomeRegister> createState() => _IncomeRegisterState();
+}
+
+class _IncomeRegisterState extends State<IncomeRegister> {
+
+  TextEditingController miktar = TextEditingController();
+  TextEditingController description = TextEditingController();
+  int? selectedValue;
+  DateTime? tarih;
+
+  Future<void> pickDate(BuildContext context) async{
+    final DateTime? pickedDate = await showDatePicker(
+        context: context,
+        initialDate: tarih ?? DateTime.now(),
+        firstDate: DateTime(2000),
+        lastDate: DateTime(2100));
+
+    if (pickedDate != null && pickedDate != tarih) {
+      setState(() {
+        tarih = pickedDate;
+      });};
+  }
+
+  Future<void> saveIncome(BuildContext context) async{
+    final db = await DBHelper.instance;
+    final int a = await selectedValue ?? 0;
+    final DateTime tarihSon = await tarih ?? DateTime.now();
+    if(miktar.text == "")
+      {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Lütfen geçerli bir meblağ giriniz.")],)));
+        return;
+      }
+    if(tarih == null)
+      {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Lütfen geçerli bir tarih giriniz.")],)));
+        return;
+      }
+    if(selectedValue == null)
+    {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Lütfen işlemin gelir veya gider olduğunu belirtiniz.")],)));
+      return;
+    }
+    db.insertIncome(double.parse(miktar.text), a, "${tarihSon!.year}-${tarihSon!.month}-${tarihSon!.day}",description.text);
+
+    setState(() {
+      miktar.clear();
+      description.clear();
+      tarih = null;
+      selectedValue = null;
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Veri girildi.")],)));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(appBar: AppBar(centerTitle: true,title: Text("Gelir-Gider Girişi"),),
+      body: Column(
+        children: [
+        Text("Meblağ:",style: TextStyle(fontSize: 50),),
+          TextField(controller: miktar,keyboardType: TextInputType.number,inputFormatters: [FilteringTextInputFormatter.digitsOnly],),
+          Text("Açıklama:",style: TextStyle(fontSize: 50),),
+          TextField(controller: description),
+          ListTile(
+            title: Text('Gelir'),
+            leading: Radio<int>(
+              value: 0,
+              groupValue: selectedValue,
+              onChanged: (int? value) {
+                setState(() {
+                  selectedValue = value;
+                });
+              },
+            ),
+          ),
+          ListTile(
+            title: Text('Gider'),
+            leading: Radio<int>(
+              value: 1,
+              groupValue: selectedValue,
+              onChanged: (int? value) {
+                setState(() {
+                  selectedValue = value;
+                });
+              },
+            ),
+          ),
+          ElevatedButton(onPressed: () {pickDate(context);},
+              child: Text(tarih == null ? "Bir Tarih Seç" : "${tarih!.year}-${tarih!.month}-${tarih!.day}")),
+          ElevatedButton(onPressed: () =>{saveIncome(context)}, child: Text("Kaydet"))
+
+      ],),);
+  }
+}
+
+class IncomeCalculator extends StatefulWidget {
+  const IncomeCalculator({super.key});
+
+  @override
+  State<IncomeCalculator> createState() => _IncomeCalculatorState();
+}
+
+class _IncomeCalculatorState extends State<IncomeCalculator> {
+  DateTime? ilkTarih;
+  DateTime? sonTarih;
+  double toplamGelir = 0;
+  double toplamGider = 0;
+
+  List<Map<String,dynamic>>? transactions;
+
+  Future<void> bilgiGetir(BuildContext context) async{
+    if(ilkTarih != null && sonTarih != null)
+      {
+     final db = await DBHelper.instance.database;
+     final list = await db.query('gelirGiderTable',where: 'date BETWEEN ? AND ?',
+         whereArgs: ["${ilkTarih?.year}-${ilkTarih?.month}-${ilkTarih?.day}",
+           "${sonTarih?.year}-${sonTarih?.month}-${sonTarih?.day}"]);
+     if(list.isEmpty)
+     {
+       transactions = null;
+     }
+     else
+     {
+       setState(() {
+         transactions = list;
+         toplamGelir = ToplamGelirHesapla(transactions);
+         toplamGider = ToplamGiderHesapla(transactions);
+       });
+
+     }
+      }
+    else
+      {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Row(children: [Text("Bir tarih aralığı belirt.")],)));
+      }
+
+  }
+
+  double ToplamGelirHesapla(List<Map<String,dynamic>>? islemler)
+  {
+    double toplam = 0;
+    for(int i = 0; i < islemler!.length;i++)
+      {
+
+       if(islemler?[i]["isIncome"] == 0)
+         {
+           toplam += islemler?[i]["amount"];
+         }
+      }
+    return toplam;
+  }
+  double ToplamGiderHesapla(List<Map<String,dynamic>>? islemler)
+  {
+    double toplam = 0;
+    for(int i = 0; i < islemler!.length;i++)
+    {
+
+      if(islemler?[i]["isIncome"] == 1)
+      {
+        toplam += islemler?[i]["amount"];
+      }
+    }
+    return toplam;
+  }
+
+  Future<void> pickDate(BuildContext context) async{
+    final DateTime? tarih = await showDatePicker(context: context,initialDate: ilkTarih ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime.now());
+    if(tarih != null && tarih != ilkTarih)
+      {
+        setState(() {
+          ilkTarih = tarih;
+        });
+      }
+  }
+
+  Future<void> pickDate2(BuildContext context) async{
+    final DateTime? tarih = await showDatePicker(context: context,initialDate: sonTarih ?? DateTime.now(), firstDate: DateTime(2000), lastDate: DateTime.now());
+    if(tarih != null && tarih != sonTarih)
+    {
+      setState(() {
+        sonTarih = tarih;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(appBar: AppBar(backgroundColor: Colors.red,centerTitle: true,title: Text("Gelir-Gider Hesaplama"),),
+    body: Column(children: [
+      Row(mainAxisAlignment: MainAxisAlignment.center,children: [
+ElevatedButton(onPressed: () {
+  pickDate(context);},
+    child: Text(ilkTarih == null ? "Başlangıç" : "${ilkTarih!.year}-${ilkTarih!.month}-${ilkTarih!.day}")),
+        SizedBox(width: 30,),
+        ElevatedButton(onPressed: () {
+          pickDate2(context);},
+            child: Text(sonTarih == null ? "Bitiş" : "${sonTarih!.year}-${sonTarih!.month}-${sonTarih!.day}"))
+      ],),
+      ElevatedButton(onPressed: () {setState(() {
+        bilgiGetir(context);
+      });}, child: Text("Ara")),
+      Expanded(
+        child: transactions == null ?Text("Kayıt bulunamadı.") : ListView.builder(itemCount: transactions?.length,itemBuilder: (context,index) {
+          final transaction = transactions?[index];
+          return ExpansionTile(
+              title:Text("${transaction!["amount"].toString()} TL") ,
+            subtitle:Text(transaction?["isIncome"] != 1 ? "Gelir" : "Gider"),
+            children: [
+              Text(transaction?["desc"] == "" ? "Açıklama yok." : transaction?["desc"]),
+            Text(transaction?["date"])],);
+        }),
+      ),
+      Container(decoration: BoxDecoration(color: Colors.amber),child: SizedBox(height: 100,width: MediaQuery.of(context).size.width,
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly,children: [
+            Text("Toplam Gelir: "),
+            Text(toplamGelir.toString()),
+            SizedBox(width: 10,),
+            Text("Toplam Gider: "),
+            Text(toplamGider.toString())
+          ],),
+        ),))
+
+
+    ],),);
+  }
+}
+
+class Settings extends StatefulWidget {
+  const Settings({super.key});
+
+  @override
+  State<Settings> createState() => _SettingsState();
+}
+
+class _SettingsState extends State<Settings> {
+  File? resimFile;
+  TextEditingController isimController = TextEditingController();
+  TextEditingController passwordController = TextEditingController();
+  TextEditingController sirketController = TextEditingController();
+  Uint8List? imageBytes;
+  XFile? PP;
+
+  Future<void> getUserData() async {
+    final db = await DBHelper.instance.database;
+
+    try {
+      // Kullanıcı bilgilerini al
+      final userData = await db.query('userTable', where: 'username = ?', whereArgs: [username]);
+      if (userData.isNotEmpty) {
+        final user = userData.first;
+        setState(() {
+          passwordController.text = user['password'] as String? ?? '';
+          sirketController.text = user['sirketAdi'] as String? ?? '';
+          isimController.text = username ?? '';
+          imageBytes = user['image'] as Uint8List?;
+        });
+
+        // Resim işlemleri
+        if (imageBytes != null) {
+          final path = await getTemporaryDirectory();
+          final filePath = '${path.path}/$username${DateTime.now().millisecondsSinceEpoch}.png';
+          final file = File(filePath);
+
+          if (await file.exists()) {
+            await file.delete();
+          }
+
+          await file.writeAsBytes(imageBytes!);
+          setState(() {
+            resimFile = file;
+            PP = XFile(file.path);
+          });
+        }
+      }
+    } catch (e) {
+      print('Kullanıcı verilerini alırken hata: $e');
+    }
+  }
+
+  Future<void> pickImage() async {
+    final imagePicker = ImagePicker();
+    final image = await imagePicker.pickImage(source: ImageSource.gallery);
+
+    if (image != null) {
+      resimFile = File(image.path);
+      final Uint8List bits = await resimFile!.readAsBytes();
+      PP = XFile(resimFile!.path);
+      setState(() {
+        imageBytes = bits;
+      });
+    }
+  }
+
+  Future<void> save(BuildContext context) async {
+    final db = await DBHelper.instance.database;
+
+    try {
+      if (username == isimController.text) {
+        await db.update(
+          'userTable',
+          {
+            'username': isimController.text,
+            'password': passwordController.text,
+            'sirketAdi': sirketController.text,
+            'image': imageBytes,
+          },
+          where: 'username = ?',
+          whereArgs: [username],
+        );
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Değişiklikler kaydedildi.')),
+        );
+      } else {
+        final result = await db.query(
+          'userTable',
+          where: 'username = ?',
+          whereArgs: [isimController.text],
+        );
+
+        if (result.isEmpty) {
+          await db.update(
+            'userTable',
+            {
+              'username': isimController.text,
+              'password': passwordController.text,
+              'sirketAdi': sirketController.text,
+              'image': imageBytes,
+            },
+            where: 'username = ?',
+            whereArgs: [username],
+          );
+          username = isimController.text;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Değişiklikler kaydedildi.')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Bu kullanıcı adını alamazsın!')),
+          );
+        }
+      }
+      await getUserData();
+    } catch (e) {
+      print('Veri kaydedilirken hata: $e');
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    getUserData();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.lightGreenAccent,
+        centerTitle: true,
+        title: Text("Ayarlar"),
+      ),
+      body: Column(
+        children: [
+          resimFile == null
+              ? GestureDetector(
+            onTap: pickImage,
+            child: Center(child: CircularProgressIndicator()),
+          )
+              : GestureDetector(
+            onTap: pickImage,
+            child: SizedBox(
+              width: 200,
+              height: 200,
+              child: Image.file(File(PP!.path)),
+            ),
+          ),
+          Text("İsim", style: TextStyle(fontSize: 30)),
+          TextField(controller: isimController),
+          Text("Şifre", style: TextStyle(fontSize: 30)),
+          TextField(controller: passwordController),
+          Text("Şirket", style: TextStyle(fontSize: 30)),
+          TextField(controller: sirketController),
+          ElevatedButton(
+            onPressed: () => save(context),
+            child: Text("Kaydet"),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+
+
+class DBHelper
+{
+  static final DBHelper instance = DBHelper._internal();
+
+  DBHelper._internal();
+
+  factory DBHelper()
+  {
+    return instance;
+  }
+
+  static Database? _database;
+
+  Future<Database> get database async
+  {
+    if(_database != null) return _database!;
+
+    _database = await _initDatabase();
+    return _database!;
+  }
+
+  Future<Database> _initDatabase() async
+  {
+    final Directory documentsDirectory = await getApplicationDocumentsDirectory();
+    final String path = '${documentsDirectory.path}/my_database2.db';
+    return await openDatabase(path, version: 1, onCreate: _onCreate);
+  }
+
+  Future<void> altering() async{
+
+    final db = await database; // Veritabanı bağlantısını çöz
+    await db.execute('ALTER TABLE gelirGiderTable ADD COLUMN desc TEXT');
+
+}
+  Future<void> creating() async{
+
+    final db = await database; // Veritabanı bağlantısını çöz
+    await db.execute('''
+      CREATE TABLE gelirGiderTable (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    amount REAL NOT NULL,
+    isIncome INTEGER NOT NULL CHECK (isIncome IN (0, 1)),
+    date TEXT NOT NULL,
+    username TEXT NOT NULL,
+    desc TEXT
+)
+    ''');
+
+  }
+
+  Future<void> _onCreate(Database db, int version) async {
+    await db.execute('''
+      CREATE TABLE userTable (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        username TEXT,
+        password TEXT,
+        image BLOB,
+        sirketAdi TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE gelirGiderTable (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    amount REAL NOT NULL,
+    isIncome INTEGER NOT NULL CHECK (isIncome IN (0, 1)),
+    date TEXT NOT NULL,
+    username TEXT NOT NULL
+)
+    ''');
+  }
+
+Future<void> insertIncome(double amount,int isIncome,String tarih, String aciklama) async
+{
+  final db = await database;
+  db.insert('gelirGiderTable', {'amount':amount,'isIncome':isIncome,'date':tarih,'username':username,'desc':aciklama});
+}
+
+  Future<void> insertUser(String kullaniciAdi,String parola,Uint8List? bytes,String sirketIsmi) async
+  {
+  final db = await database;
+try{
+      db.insert('userTable', {'username': kullaniciAdi,'password': parola,'image': bytes,'sirketAdi' : sirketIsmi},
+      conflictAlgorithm: ConflictAlgorithm.abort);
+
+  }
+  catch(e)
+  {
+
+  }
+  }
+
+  Future<void> deleteUser(String username) async
+  {
+   final db = await database;
+   try
+   {
+     db.delete('userTable',where: 'username = ?', whereArgs: [username]);
+   }
+   catch(e)
+    {
+
+    }
+  }
+}
